@@ -2,9 +2,9 @@ package ordermatcher
 
 import (
 	"errors"
-	"fmt"
 	"math/rand"
 	"sort"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -27,8 +27,7 @@ type Exchange struct {
 }
 
 func NewExchange(assetType, baseType string) *Exchange {
-	// rand.Seed(time.Now().UnixNano())
-	rand.Seed(123)
+	rand.Seed(time.Now().UnixNano())
 
 	exchange := Exchange{
 		Actors:                make(map[uuid.UUID]*Actor),
@@ -75,13 +74,15 @@ func (e *Exchange) BidOrder(actorUUID uuid.UUID, volume, price int64) (uuid.UUID
 	return order.UUID, err
 }
 
-func (e *Exchange) MatchRestingOrders(algorithm string) {
+func (e *Exchange) MatchRestingOrders(algorithm string) *MatchResult {
 	defer e.resetRestingOrders()
 
 	switch algorithm {
 	case FIFOMatch:
-		e.matchRestingOrdersFIFOMatch()
+		return e.matchRestingOrdersFIFOMatch()
 	}
+
+	return nil
 }
 
 func (e *Exchange) resetRestingOrders() {
@@ -97,79 +98,78 @@ func (e *Exchange) resetRestingOrders() {
 	}
 }
 
-func (e *Exchange) matchRestingOrdersFIFOMatch() {
+func (e *Exchange) matchRestingOrdersFIFOMatch() *MatchResult {
+	result := NewMatchResult()
 	sellOrders := make([]*Order, e.RestingSellOrderCount)
 	buyOrders := make([]*Order, e.RestingBuyOrderCount)
+	filledBuyVolume := int64(0)
+	filledSellVolume := int64(0)
+	sellerIndex := 0
+	buyerIndex := 0
 
 	for _, sellOrder := range e.RestingSellOrders {
-		sellOrders[sellOrder.RestingOrder] = sellOrder
+		sellOrders[sellOrder.RestingOrderIndex] = sellOrder
 	}
 
 	for _, buyOrder := range e.RestingBuyOrders {
-		buyOrders[buyOrder.RestingOrder] = buyOrder
+		buyOrders[buyOrder.RestingOrderIndex] = buyOrder
 	}
 
 	sort.Slice(sellOrders, func(i, j int) bool {
-		if sellOrders[i].RestingOrder == sellOrders[j].RestingOrder {
-			return sellOrders[i].RestingOrder < sellOrders[j].RestingOrder
+		if sellOrders[i].Price == sellOrders[j].Price {
+			return sellOrders[i].RestingOrderIndex < sellOrders[j].RestingOrderIndex
 		}
-		return sellOrders[i].Slip < sellOrders[j].Slip
+		return sellOrders[i].SlippedPrice < sellOrders[j].SlippedPrice
 	})
 
 	sort.Slice(buyOrders, func(i, j int) bool {
-		if buyOrders[i].RestingOrder == buyOrders[j].RestingOrder {
-			return buyOrders[i].RestingOrder < buyOrders[j].RestingOrder
+		if buyOrders[i].Price == buyOrders[j].Price {
+			return buyOrders[i].RestingOrderIndex < buyOrders[j].RestingOrderIndex
 		}
-		return buyOrders[i].Slip > buyOrders[j].Slip
+		return buyOrders[i].SlippedPrice > buyOrders[j].SlippedPrice
 	})
-
-	var lastExhaustionStatus string
-	var lastRemainingVolume int64
-	var matchedOrderList []*MatchedOrder
-	sellerIndex := 0
-	buyerIndex := 0
 
 	for sellerIndex < e.RestingSellOrderCount && buyerIndex < e.RestingBuyOrderCount {
 		currentSellOrder := sellOrders[sellerIndex]
 		currentBuyOrder := buyOrders[buyerIndex]
-		matchedOrder, exhaustionStatus, remainingVolume := MatchOrders(currentSellOrder, currentBuyOrder, lastExhaustionStatus, lastRemainingVolume)
-
-		fmt.Printf("%v %v %v\n", matchedOrder, exhaustionStatus, remainingVolume)
+		matchedOrder, exhaustionStatus := MatchOrders(currentSellOrder, currentBuyOrder, filledBuyVolume, filledSellVolume)
 
 		if exhaustionStatus == NoOrdersExhausted {
 			break
-		}
-
-		lastRemainingVolume = remainingVolume
-		matchedOrderList = append(matchedOrderList, matchedOrder)
-
-		if exhaustionStatus == BothOrdersExhausted {
-			currentSellOrder.Status = OrderStatusFullyFilled
+		} else if exhaustionStatus == BothOrdersExhausted {
+			result.TotalVolume += matchedOrder.AgreedVolume
 			currentBuyOrder.Status = OrderStatusFullyFilled
+			currentSellOrder.Status = OrderStatusFullyFilled
+			filledSellVolume = 0
+			filledBuyVolume = 0
 			sellerIndex += 1
 			buyerIndex += 1
 		} else if exhaustionStatus == SellOrderExhausted {
+			result.TotalVolume += matchedOrder.AgreedVolume
 			currentSellOrder.Status = OrderStatusFullyFilled
 			currentBuyOrder.Status = OrderStatusPartiallyFilled
+			filledSellVolume = 0
+			filledBuyVolume += matchedOrder.AgreedVolume
 			sellerIndex += 1
 		} else {
+			result.TotalVolume += matchedOrder.AgreedVolume
 			currentSellOrder.Status = OrderStatusPartiallyFilled
 			currentBuyOrder.Status = OrderStatusFullyFilled
+			filledSellVolume += matchedOrder.AgreedVolume
+			filledBuyVolume = 0
 			buyerIndex += 1
 		}
+
+		if result.HighestPrice < matchedOrder.AgreedPrice {
+			result.HighestPrice = matchedOrder.AgreedPrice
+		}
+
+		if result.LowestPrice > matchedOrder.AgreedPrice {
+			result.LowestPrice = matchedOrder.AgreedPrice
+		}
+
+		result.Matches = append(result.Matches, matchedOrder)
 	}
 
-	fmt.Println("")
-	for _, e := range matchedOrderList {
-		fmt.Printf("%v\n", e)
-	}
-
-	for _, value := range e.RestingBuyOrders {
-		fmt.Printf("%v\n", value)
-	}
-
-	for _, value := range e.RestingSellOrders {
-		fmt.Printf("%v\n", value)
-	}
-
+	return result
 }

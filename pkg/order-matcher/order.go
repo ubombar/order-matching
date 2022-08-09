@@ -17,31 +17,31 @@ const (
 )
 
 type Order struct {
-	UUID         uuid.UUID
-	ActorUUID    uuid.UUID
-	Type         string
-	Price        int64
-	Volume       int64
-	Slip         int64
-	AssetType    string
-	BaseType     string
-	RestingOrder int
-	Status       string
+	UUID              uuid.UUID
+	ActorUUID         uuid.UUID
+	Type              string
+	Price             int64
+	Volume            int64
+	SlippedPrice      int64
+	AssetType         string
+	BaseType          string
+	RestingOrderIndex int
+	Status            string
 }
 
 func NewOrder(actorUUID uuid.UUID,
 	orderType string,
 	price,
 	volume,
-	slip int64,
+	slippedPrice int64,
 	assetType,
 	baseType string,
-	restingOrder int) (*Order, error) {
+	restingOrderIndex int) (*Order, error) {
 	if orderType != BuyOrder && orderType != SellOrder {
 		return nil, errors.New("orderType can ony be buy or sell")
 	}
 
-	if slip < 0 {
+	if slippedPrice < 0 {
 		return nil, errors.New("slip cannot be negative")
 	}
 
@@ -50,16 +50,16 @@ func NewOrder(actorUUID uuid.UUID,
 	}
 
 	order := Order{
-		UUID:         uuid.New(),
-		ActorUUID:    actorUUID,
-		Type:         orderType,
-		Price:        price,
-		Volume:       volume,
-		Slip:         slip,
-		AssetType:    assetType,
-		BaseType:     baseType,
-		RestingOrder: restingOrder,
-		Status:       OrderStatusResting,
+		UUID:              uuid.New(),
+		ActorUUID:         actorUUID,
+		Type:              orderType,
+		Price:             price,
+		Volume:            volume,
+		SlippedPrice:      slippedPrice,
+		AssetType:         assetType,
+		BaseType:          baseType,
+		RestingOrderIndex: restingOrderIndex,
+		Status:            OrderStatusResting,
 	}
 
 	return &order, nil
@@ -70,10 +70,10 @@ func (o Order) String() string {
 	var filled string
 	var slip string
 
-	if o.Slip-o.Price < 0 {
-		slip = fmt.Sprintf("%v", o.Slip-o.Price)
+	if o.SlippedPrice-o.Price < 0 {
+		slip = fmt.Sprintf("%v", o.SlippedPrice-o.Price)
 	} else {
-		slip = fmt.Sprintf("+%v", o.Slip-o.Price)
+		slip = fmt.Sprintf("+%v", o.SlippedPrice-o.Price)
 	}
 
 	if o.Status == OrderStatusResting {
@@ -90,5 +90,5 @@ func (o Order) String() string {
 		askOrBid = "ASK"
 	}
 
-	return fmt.Sprintf("%v[%v] %v %v @ %v%v %v (%v)", askOrBid, o.RestingOrder, o.Volume, o.AssetType, o.Price, slip, o.BaseType, filled)
+	return fmt.Sprintf("%v[%v] %v %v @ %v%v %v (%v)", askOrBid, o.RestingOrderIndex, o.Volume, o.AssetType, o.Price, slip, o.BaseType, filled)
 }

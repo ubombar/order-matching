@@ -1,27 +1,27 @@
 package main
 
 import (
+	"fmt"
+	"math/rand"
 	ordermatcher "order-matching/pkg/order-matcher"
 )
 
 func main() {
-	exchange := ordermatcher.NewExchange("BTC", "USDT")
+	exchange := ordermatcher.NewExchange("BMB", "mUSDT")
 
 	bidderUUID, _ := exchange.AddActor(1000, 1000)
 	askerUUID, _ := exchange.AddActor(1000, 1000)
 
-	// for i := 0; i < 2; i++ {
-	// 	exchange.BidOrder(bidderUUID, 1, 1000)
-	// 	exchange.AskOrder(askerUUID, 1, 1000)
-	// }
+	for i := 0; i < 200; i++ {
+		exchange.BidOrder(bidderUUID, 5+rand.Int63n(3), 1010+rand.Int63n(10))
+		exchange.AskOrder(askerUUID, 5+rand.Int63n(3), 1000+rand.Int63n(10))
+	}
 
-	exchange.BidOrder(bidderUUID, 6, 1000) // Buy
-	exchange.BidOrder(bidderUUID, 1, 1000) // Buy
-	exchange.AskOrder(askerUUID, 2, 1000)  // Sell
-	exchange.AskOrder(askerUUID, 2, 1000)  // Sell
+	matchedOrders := exchange.MatchRestingOrders(ordermatcher.FIFOMatch)
 
-	// fmt.Printf("%v\n", exchange.RestingSellOrders[askOrderUUID].String())
-	// fmt.Printf("%v\n", exchange.RestingBuyOrders[bidOrderUUID].String())
+	fmt.Printf("%v\n", matchedOrders)
 
-	exchange.MatchRestingOrders(ordermatcher.FIFOMatch)
+	for _, e := range matchedOrders.Matches {
+		fmt.Printf("%v\n", e)
+	}
 }

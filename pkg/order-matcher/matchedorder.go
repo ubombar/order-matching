@@ -31,33 +31,29 @@ func newMatchedOrder(sellOrder, buyOrder *Order, price, volume int64) *MatchedOr
 	}
 }
 
-func MatchOrders(sellOrder, buyOrder *Order, lastExhaustionStatus string, lastRemainingVolume int64) (*MatchedOrder, string, int64) {
+func MatchOrders(sellOrder, buyOrder *Order, filledBuyVolume, filledSellVolume int64) (*MatchedOrder, string) {
 	if sellOrder == nil || buyOrder == nil {
-		return nil, NoOrdersExhausted, 0
+		return nil, NoOrdersExhausted
 	}
 
-	if sellOrder.Slip < buyOrder.Slip {
-		return nil, NoOrdersExhausted, 0
+	if sellOrder.SlippedPrice < buyOrder.SlippedPrice {
+		return nil, NoOrdersExhausted
 	}
 
-	var volumeDifference int64
-	agreedPrice := int64((sellOrder.Slip + buyOrder.Slip) / 2)
-
-	if lastExhaustionStatus == BuyOrderExhausted {
-		volumeDifference = buyOrder.Volume + lastRemainingVolume - sellOrder.Volume
-	} else {
-		volumeDifference = buyOrder.Volume - lastRemainingVolume - sellOrder.Volume
-	}
+	agreedPrice := int64((sellOrder.SlippedPrice + buyOrder.SlippedPrice) / 2)
+	realBuyerVolume := buyOrder.Volume - filledBuyVolume
+	realSellerVolume := sellOrder.Volume - filledSellVolume
+	volumeDifference := realBuyerVolume - realSellerVolume
 
 	if volumeDifference == 0 {
-		matchedOrder := newMatchedOrder(sellOrder, buyOrder, agreedPrice, sellOrder.Volume)
-		return matchedOrder, BothOrdersExhausted, 0
+		matchedOrder := newMatchedOrder(sellOrder, buyOrder, agreedPrice, realBuyerVolume)
+		return matchedOrder, BothOrdersExhausted
 	} else if volumeDifference > 0 {
-		matchedOrder := newMatchedOrder(sellOrder, buyOrder, agreedPrice, sellOrder.Volume)
-		return matchedOrder, SellOrderExhausted, volumeDifference
+		matchedOrder := newMatchedOrder(sellOrder, buyOrder, agreedPrice, realSellerVolume)
+		return matchedOrder, SellOrderExhausted
 	} else {
-		matchedOrder := newMatchedOrder(sellOrder, buyOrder, agreedPrice, buyOrder.Volume)
-		return matchedOrder, BuyOrderExhausted, -volumeDifference
+		matchedOrder := newMatchedOrder(sellOrder, buyOrder, agreedPrice, realBuyerVolume)
+		return matchedOrder, BuyOrderExhausted
 	}
 
 }
